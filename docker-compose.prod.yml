@@ -1,0 +1,67 @@
+# Production stack: pulls pre-built images from GHCR (built by .github/workflows/deploy.yml).
+# Lives in /opt/skillbharat on the server next to a .env file (see docs/DEPLOYMENT.md).
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: skillbharat
+      POSTGRES_USER: skillbharat
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skillbharat -d skillbharat"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  backend:
+    image: ghcr.io/${GHCR_OWNER:?set by the deploy workflow}/skillbharat-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/skillbharat
+      DB_USERNAME: skillbharat
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env (32+ random characters)}
+      SEED_DEMO_DATA: "false"
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?Set ADMIN_EMAIL in .env}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      CORS_ALLOWED_ORIGINS: https://${DOMAIN:?Set DOMAIN in .env}
+      STORAGE_DIR: /data/resumes
+      SPRINGDOC_API_DOCS_ENABLED: "false"      # no public API docs in production
+      SPRINGDOC_SWAGGER_UI_ENABLED: "false"
+    volumes:
+      - resumes:/data/resumes
+
+  frontend:
+    image: ghcr.io/${GHCR_OWNER:?set by the deploy workflow}/skillbharat-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  # Terminates HTTPS (automatic Let's Encrypt certificates) and forwards to the web container.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - frontend
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  resumes:
+  caddy_data:
+  caddy_config:
