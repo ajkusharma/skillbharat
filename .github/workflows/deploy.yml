@@ -28,7 +28,7 @@ jobs:
     outputs:
       owner: ${{ steps.owner.outputs.lower }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Lower-case the owner (GHCR requires lower-case image names)
         id: owner
@@ -75,7 +75,7 @@ jobs:
       contents: read
       packages: read               # the same token is used on the server to pull the private images
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Prepare SSH
         env:
